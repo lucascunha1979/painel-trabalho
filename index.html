@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Painel • 2012–2024 (Valores e CV) — Indicadores Mercado de Trabalho (IBGE)</title>
+  <title>Painel • 2012–2024 (Valores e CV) — Indicadores (IBGE)</title>
 
   <!-- Plotly + PapaParse + html2pdf -->
   <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
@@ -228,9 +228,7 @@
       box-shadow:0 0 0 2px #000 inset;
     }
 
-    #tabela-wrapper{
-      overflow-x:auto;
-    }
+    #tabela-wrapper{ overflow-x:auto; }
     table{
       width:100%;
       border-collapse:collapse;
@@ -287,8 +285,8 @@
     <div class="sub-bloco">Filtros por localidade e variável + leitura por governo (média, tendência e variações).</div>
 
     <div class="tabs">
-      <button class="tabbtn ativo" id="tabValores" title="Série de valores">📌 Valores</button>
-      <button class="tabbtn" id="tabCV" title="Coeficiente de variação">📎 CV</button>
+      <button class="tabbtn ativo" id="tabValores">📌 Valores</button>
+      <button class="tabbtn" id="tabCV">📎 CV</button>
     </div>
 
     <div id="filtros">
@@ -343,7 +341,7 @@
       <aside id="painel-governos-wrapper">
         <div id="painel-governos-header">
           <span>Governos (clique para filtrar)</span>
-          <button id="reset-governo" title="Voltar para todos os governos">Mostrar todos</button>
+          <button id="reset-governo">Mostrar todos</button>
         </div>
         <div id="painel-governos"></div>
       </aside>
@@ -397,12 +395,10 @@ const PATH_CV_DEFAULT      = "data/painel_cv.csv";
 const COL_ANO = "Ano";
 const COL_LOC = "Grandes Regiões, Unidades da Federação e Municípios";
 
-// governantes devem existir no CSV (você já adicionou)
 const GOVCOL_BR  = "Presidente_BR";
 const GOVCOL_RS  = "Governador_RS";
 const GOVCOL_POA = "Prefeito_POA";
 
-// suas listas de variáveis
 const POP_COLS = [
   "População em idade de trabalhar (1 000 pessoas)",
   "População na força de trabalho (1 000 pessoas)",
@@ -420,11 +416,9 @@ const RATE_COLS = [
   "Taxa composta de subutilização (%)"
 ];
 
-// arredondamento exibido
 const DEC_TAXAS_VALORES = 1;
 const DEC_TAXAS_CV      = 2;
 
-/* Paleta fixa (as barras usam sempre essas cores em ordem) */
 const GOV_COLORS = [
   "#d62728", "#1f77b4", "#2ca02c", "#ff7f0e", "#9467bd",
   "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
@@ -435,13 +429,17 @@ const GOV_COLORS = [
 ========================= */
 let DATA_VALORES = [];
 let DATA_CV = [];
-let activeTab = "valores";   // "valores" | "cv"
+let activeTab = "valores";
 let governoAtivo = null;
 let lastGovTable = [];
 
 /* =========================
    HELPERS
 ========================= */
+function normKey(k){
+  if (k === null || k === undefined) return "";
+  return String(k).replace(/^\uFEFF/,"").replace(/\s+/g," ").trim();
+}
 function normText(x){
   if (x === null || x === undefined) return "";
   return String(x).replace(/\s+/g," ").trim();
@@ -451,15 +449,12 @@ function parseNumber(v){
   if (v === null || v === undefined) return NaN;
   let s = String(v).trim();
   if (!s) return NaN;
-  // aceita "62,8" e "62.8"
   if (s.includes(",")) s = s.replace(/\./g,"").replace(",",".");
   s = s.replace(/\s/g,"");
   const num = Number(s);
   return Number.isFinite(num) ? num : NaN;
 }
-function unique(arr){
-  return [...new Set(arr)];
-}
+function unique(arr){ return [...new Set(arr)]; }
 function uniqueSorted(arr){
   return unique(arr).sort((a,b)=>{
     if (typeof a === "number" && typeof b === "number") return a-b;
@@ -501,34 +496,13 @@ function hexToRgba(hex, alpha){
   const b = parseInt(h.slice(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
-function linearTrend(y){
-  const n = y.length;
-  if (n < 2) return y.map(()=>NaN);
-  const x = y.map((_,i)=>i);
-  const meanX = x.reduce((a,b)=>a+b,0)/n;
-  const meanY = y.reduce((a,b)=>a+b,0)/n;
-  let num=0, den=0;
-  for(let i=0;i<n;i++){
-    num += (x[i]-meanX)*(y[i]-meanY);
-    den += (x[i]-meanX)*(x[i]-meanX);
-  }
-  const a = den===0 ? 0 : num/den;
-  const b = meanY - a*meanX;
-  return x.map(xi=>a*xi+b);
-}
-function isRateVar(varName){
-  return RATE_COLS.includes(varName);
-}
+function isRateVar(v){ return RATE_COLS.includes(v); }
 function decimalsForCurrent(varName){
   if (activeTab === "valores"){
     return isRateVar(varName) ? DEC_TAXAS_VALORES : 0;
   }
   return isRateVar(varName) ? DEC_TAXAS_CV : 2;
 }
-
-/* =========================
-   GOVERNOS (coluna conforme localidade)
-========================= */
 function govColForLocalidade(localidade){
   if (localidade === "Rio Grande do Sul") return GOVCOL_RS;
   if (localidade === "Porto Alegre") return GOVCOL_POA;
@@ -538,6 +512,26 @@ function tipoGovernoForLocalidade(localidade){
   if (localidade === "Rio Grande do Sul") return "Governador_RS";
   if (localidade === "Porto Alegre") return "Prefeito_POA";
   return "Presidente_BR";
+}
+
+/* Regressão linear y = a*x + b (x=ano) */
+function linearTrendXY(xs, ys){
+  const pts = xs.map((x,i)=>({x, y:ys[i]})).filter(p=>Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (pts.length < 2) return xs.map(()=>null);
+
+  const n = pts.length;
+  const meanX = pts.reduce((s,p)=>s+p.x,0)/n;
+  const meanY = pts.reduce((s,p)=>s+p.y,0)/n;
+
+  let num=0, den=0;
+  for(const p of pts){
+    num += (p.x-meanX)*(p.y-meanY);
+    den += (p.x-meanX)*(p.x-meanX);
+  }
+  const a = den===0 ? 0 : num/den;
+  const b = meanY - a*meanX;
+
+  return xs.map(x => Number.isFinite(x) ? (a*x + b) : null);
 }
 
 /* =========================
@@ -566,18 +560,25 @@ function parseCSVFromFile(file){
     });
   });
 }
+
+/* robusto: aceita Ano ou "no" */
 function coerceRows(rawRows){
   return rawRows.map(r=>{
     const obj = {};
     Object.keys(r).forEach(k=>{
-      obj[normText(k)] = r[k];
+      obj[normKey(k)] = r[k];
     });
-    obj[COL_ANO] = parseNumber(obj[COL_ANO]);
-    obj[COL_LOC] = normText(obj[COL_LOC]);
-    // normaliza governantes se existirem
+
+    const anoRaw = (obj[COL_ANO] ?? obj["no"] ?? obj["ANO"] ?? obj["Ano"] ?? obj["Ano "]);
+    obj[COL_ANO] = parseNumber(anoRaw);
+
+    const locRaw = (obj[COL_LOC] ?? obj["Grandes Regioes, Unidades da Federacao e Municipios"] ?? obj["Grandes Regiões, Unidades da Federação e Municípios"]);
+    obj[COL_LOC] = normText(locRaw);
+
     obj[GOVCOL_BR]  = normText(obj[GOVCOL_BR]);
     obj[GOVCOL_RS]  = normText(obj[GOVCOL_RS]);
     obj[GOVCOL_POA] = normText(obj[GOVCOL_POA]);
+
     return obj;
   }).filter(r => Number.isFinite(r[COL_ANO]) && r[COL_LOC]);
 }
@@ -585,7 +586,6 @@ function coerceRows(rawRows){
 async function loadAllData(){
   const status = document.getElementById("statusText");
   status.textContent = "Carregando dados (arquivos padrão)…";
-
   try{
     const [rawV, rawC] = await Promise.all([
       parseCSVFromPath(PATH_VALORES_DEFAULT),
@@ -599,13 +599,16 @@ async function loadAllData(){
     DATA_VALORES = [];
     DATA_CV = [];
   }
-
   initUI();
 }
 
 /* =========================
    UI INIT
 ========================= */
+function getDataset(){
+  return (activeTab === "valores") ? DATA_VALORES : DATA_CV;
+}
+
 function initUI(){
   const selLoc = document.getElementById("selLocalidade");
   const selVar = document.getElementById("selVariavel");
@@ -626,7 +629,6 @@ function initUI(){
     selLoc.appendChild(opt);
   });
 
-  // Variáveis
   selVar.innerHTML = "";
   const addGroup = (label, cols)=>{
     const og = document.createElement("optgroup");
@@ -643,7 +645,7 @@ function initUI(){
   addGroup("Taxas (%)", RATE_COLS);
 
   const anos = base.length
-    ? uniqueSorted(base.map(r=>r[COL_ANO]).filter(Number.isFinite))
+    ? uniqueSorted(base.map(r=>Math.trunc(r[COL_ANO])).filter(Number.isFinite))
     : Array.from({length:13}, (_,i)=>2012+i);
 
   selMin.innerHTML = "";
@@ -657,13 +659,11 @@ function initUI(){
     selMax.appendChild(o2);
   });
 
-  // defaults
-  selLoc.value = locs.includes("Rio Grande do Sul") ? "Rio Grande do Sul" : locs[0];
+  selLoc.value = locs.includes("Brasil") ? "Brasil" : locs[0];
   selVar.value = RATE_COLS[0];
-  selMin.value = 2012;
-  selMax.value = 2024;
+  selMin.value = anos[0] ?? 2012;
+  selMax.value = anos[anos.length-1] ?? 2024;
 
-  // tabs
   document.getElementById("tabValores").addEventListener("click", ()=>{
     activeTab = "valores";
     governoAtivo = null;
@@ -679,14 +679,13 @@ function initUI(){
     updateAll();
   });
 
-  // botões
   document.getElementById("btnAplicar").addEventListener("click", ()=>{ governoAtivo=null; updateAll(); });
   document.getElementById("btnReset").addEventListener("click", ()=>{
     governoAtivo=null;
-    selLoc.value = "Rio Grande do Sul";
+    selLoc.value = "Brasil";
     selVar.value = RATE_COLS[0];
-    selMin.value = 2012;
-    selMax.value = 2024;
+    selMin.value = anos[0] ?? 2012;
+    selMax.value = anos[anos.length-1] ?? 2024;
     updateAll();
   });
 
@@ -695,7 +694,6 @@ function initUI(){
     updateAll();
   });
 
-  // uploads
   document.getElementById("fileValores").addEventListener("change", async (ev)=>{
     const f = ev.target.files?.[0];
     if(!f) return;
@@ -714,7 +712,6 @@ function initUI(){
     updateAll();
   });
 
-  // downloads
   document.getElementById("btnDownRecorte").addEventListener("click", ()=>{
     const rec = getRecorteSlim();
     downloadText(`recorte_${activeTab}_${Date.now()}.csv`, toCSV(rec), "text/csv;charset=utf-8");
@@ -755,12 +752,8 @@ function initUI(){
 }
 
 /* =========================
-   FILTRO BASE
+   FILTRO + SÉRIE ANUAL COMPLETA
 ========================= */
-function getDataset(){
-  return (activeTab === "valores") ? DATA_VALORES : DATA_CV;
-}
-
 function getFilteredRows(){
   const ds = getDataset();
   const selLoc = document.getElementById("selLocalidade").value;
@@ -776,7 +769,70 @@ function getFilteredRows(){
     .sort((a,b)=>a[COL_ANO]-b[COL_ANO]);
 }
 
-/* recorte para download */
+/* monta (anos completos) + y por ano (média se houver duplicatas) + gov por ano */
+function buildAnnualSeries(rows, selVar, selLoc){
+  const minY = Math.trunc(parseNumber(document.getElementById("selAnoMin").value));
+  const maxY = Math.trunc(parseNumber(document.getElementById("selAnoMax").value));
+  const govCol = govColForLocalidade(selLoc);
+
+  const map = new Map(); // year -> {vals:[], gov:""}
+  for(const r of rows){
+    const y = Math.trunc(r[COL_ANO]);
+    if (!Number.isFinite(y)) continue;
+    const v = parseNumber(r[selVar]);
+    const g = normText(r[govCol]) || "";
+    if (!map.has(y)) map.set(y, {vals:[], gov:g});
+    const obj = map.get(y);
+    if (Number.isFinite(v)) obj.vals.push(v);
+    if (!obj.gov && g) obj.gov = g;
+  }
+
+  const years = [];
+  const values = [];
+  const govs = [];
+
+  for(let y=minY; y<=maxY; y++){
+    years.push(y);
+    if (map.has(y) && map.get(y).vals.length){
+      const arr = map.get(y).vals;
+      const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+      values.push(mean);
+    } else {
+      values.push(null);
+    }
+    govs.push(map.has(y) ? (map.get(y).gov || "") : "");
+  }
+
+  return { years, values, govs };
+}
+
+/* segmentos consecutivos de governo */
+function buildGovSegments(years, govs){
+  const segs = [];
+  let start = 0;
+  for(let i=1;i<govs.length;i++){
+    if (govs[i] !== govs[i-1]){
+      segs.push({ gov: govs[i-1], y0: years[start], y1: years[i-1] });
+      start = i;
+    }
+  }
+  segs.push({ gov: govs[govs.length-1], y0: years[start], y1: years[years.length-1] });
+
+  // remove segs vazios
+  const segs2 = segs.filter(s=>s.gov);
+
+  // cor por ordem de aparição
+  const govList = unique(segs2.map(s=>s.gov));
+  const colorMap = {};
+  govList.forEach((g,i)=> colorMap[g] = GOV_COLORS[i % GOV_COLORS.length]);
+  segs2.forEach(s=> s.cor = colorMap[s.gov] || "#888");
+
+  return segs2;
+}
+
+/* =========================
+   RECORTE (DOWNLOAD)
+========================= */
 function getRecorteSlim(){
   const rows = getFilteredRows();
   const selVar = document.getElementById("selVariavel").value;
@@ -787,7 +843,7 @@ function getRecorteSlim(){
 
   const out = [];
   rows.forEach(r=>{
-    const ano = Number(r[COL_ANO]);
+    const ano = Math.trunc(r[COL_ANO]);
     const gov = normText(r[govCol]) || "";
     if (governoAtivo && gov !== governoAtivo) return;
 
@@ -803,54 +859,6 @@ function getRecorteSlim(){
     });
   });
   return out;
-}
-
-/* =========================
-   SEGMENTOS DE GOVERNO (para barras + painel)
-   - usa a coluna do CSV (Presidente_BR / Governador_RS / Prefeito_POA)
-========================= */
-function buildGovSegmentsFromRows(rows, selLoc){
-  const govCol = govColForLocalidade(selLoc);
-
-  // anos como STRING no eixo X (garante shapes funcionarem)
-  const years = rows.map(r => String(Math.trunc(r[COL_ANO])));
-
-  const govs = rows.map(r => normText(r[govCol]) || "");
-
-  // se o CSV vier sem governante, devolve vazio
-  const anyGov = govs.some(g=>g);
-  if (!anyGov){
-    return { segments: [], yearLabels: years };
-  }
-
-  // cria segmentos por mudanças de governo
-  const segments = [];
-  let startIdx = 0;
-  for(let i=1;i<govs.length;i++){
-    if (govs[i] !== govs[i-1]){
-      segments.push({
-        gov: govs[i-1],
-        x0: years[startIdx],
-        x1: years[i-1]
-      });
-      startIdx = i;
-    }
-  }
-  // último
-  segments.push({
-    gov: govs[govs.length-1],
-    x0: years[startIdx],
-    x1: years[years.length-1]
-  });
-
-  // cores (mapeia por ordem de aparecimento)
-  const govList = unique(segments.map(s=>s.gov).filter(Boolean));
-  const colorMap = {};
-  govList.forEach((g,i)=>{ colorMap[g] = GOV_COLORS[i % GOV_COLORS.length]; });
-
-  segments.forEach(s=>{ s.cor = colorMap[s.gov] || "#888"; });
-
-  return { segments, yearLabels: years, colorMap };
 }
 
 /* =========================
@@ -876,49 +884,40 @@ function renderChartAndGovPanel(rows){
   const selLoc = document.getElementById("selLocalidade").value;
   const dec = decimalsForCurrent(selVar);
 
-  // segmentos de governo baseados no CSV
-  const { segments, yearLabels } = buildGovSegmentsFromRows(rows, selLoc);
+  const { years, values, govs } = buildAnnualSeries(rows, selVar, selLoc);
 
-  // se usuário clicou num governo, filtra as linhas
-  let base = rows.slice();
-  const govCol = govColForLocalidade(selLoc);
+  // filtro por governo clicado
+  let xs = years.slice();
+  let ys = values.slice();
+  let gs = govs.slice();
+
   if (governoAtivo){
-    base = base.filter(r => normText(r[govCol]) === governoAtivo);
+    xs = xs.filter((_,i)=> gs[i] === governoAtivo);
+    ys = ys.filter((_,i)=> gs[i] === governoAtivo);
   }
 
-  // eixo X: anos como string (categoria)
-  const xLabels = base.map(r => String(Math.trunc(r[COL_ANO])));
+  const mean = ys.filter(v=>Number.isFinite(v)).length
+    ? ys.filter(v=>Number.isFinite(v)).reduce((a,b)=>a+b,0) / ys.filter(v=>Number.isFinite(v)).length
+    : null;
 
-  // série y
-  const y = base.map(r => parseNumber(r[selVar]));
-  const xy = xLabels.map((x,i)=>({x, y:y[i]})).filter(p=>Number.isFinite(p.y));
+  const trend = linearTrendXY(xs, ys);
 
-  const xs = xy.map(p=>p.x);
-  const ys = xy.map(p=>p.y);
+  // barras no fundo (sempre baseado na série completa, não na filtrada)
+  const segs = buildGovSegments(years, govs);
+  const segsVis = governoAtivo ? segs.filter(s=>s.gov===governoAtivo) : segs;
 
-  // média / tendência
-  const mean = ys.length ? ys.reduce((a,b)=>a+b,0)/ys.length : NaN;
-  const trend = linearTrend(ys);
-
-  // BARRAS NO FUNDO (shapes) — usando x0/x1 como LABELS do eixo X (strings)
-  const shapes = [];
-  const segsVis = governoAtivo ? segments.filter(s=>s.gov===governoAtivo) : segments;
-
-  segsVis.forEach(s=>{
-    if(!s.gov) return;
-    shapes.push({
-      type:"rect",
-      xref:"x",
-      yref:"paper",
-      x0:s.x0,
-      x1:s.x1,
-      y0:0,
-      y1:1,
-      fillcolor: hexToRgba(s.cor, 0.18),  // mais visível
-      line:{width:0},
-      layer:"below"
-    });
-  });
+  const shapes = segsVis.map(s=>({
+    type:"rect",
+    xref:"x",
+    yref:"paper",
+    x0: s.y0 - 0.5,
+    x1: s.y1 + 0.5,
+    y0: 0,
+    y1: 1,
+    fillcolor: hexToRgba(s.cor, 0.22),
+    line: { width: 0 },
+    layer: "below"
+  }));
 
   const traces = [];
 
@@ -931,7 +930,7 @@ function renderChartAndGovPanel(rows){
     hovertemplate: `Ano=%{x}<br>Valor=%{y}<extra></extra>`
   });
 
-  if (ys.length){
+  if (mean !== null){
     traces.push({
       x: xs,
       y: xs.map(()=>mean),
@@ -940,7 +939,9 @@ function renderChartAndGovPanel(rows){
       line: { color: "#1f77b4", dash: "dot" },
       hovertemplate: `Média=%{y}<extra></extra>`
     });
+  }
 
+  if (trend && trend.some(v=>v!==null)){
     traces.push({
       x: xs,
       y: trend,
@@ -951,57 +952,48 @@ function renderChartAndGovPanel(rows){
     });
   }
 
-  // título
   const titulo = `${selLoc}: ${selVar}`.replace(": ", ":<br>");
+
+  const minX = years.length ? Math.min(...years) : 2012;
+  const maxX = years.length ? Math.max(...years) : 2024;
 
   Plotly.newPlot("grafico", traces, {
     title: { text: titulo, x: 0.5, xanchor: "center" },
     xaxis: {
       title: "Ano",
-      type: "category",
-      tickangle: -45
+      type: "linear",
+      tickmode: "linear",
+      dtick: 1,
+      tickformat: "d",
+      range: [minX - 0.5, maxX + 0.5]
     },
     yaxis: { title: activeTab === "cv" ? "CV" : "Valor" },
     shapes: shapes,
     height: 560,
-    margin: { l: 70, r: 20, t: 90, b: 110 },
+    margin: { l: 70, r: 20, t: 90, b: 80 },
     legend: { orientation: "v" }
-  }, { displaylogo:false, responsive:true }).then(()=>{
-    // após o plot, atualiza hover com formatação (pt-BR)
-    try{
-      Plotly.restyle("grafico", {
-        hovertemplate: [`Ano=%{x}<br>Valor=%{y:${dec===0 ? ",.0f" : ",."+dec+"f"}}<extra></extra>`]
-      }, [0]);
-      if (ys.length){
-        Plotly.restyle("grafico", {
-          hovertemplate: [`Média=%{y:${dec===0 ? ",.0f" : ",."+dec+"f"}}<extra></extra>`]
-        }, [1]);
-        Plotly.restyle("grafico", {
-          hovertemplate: [`Tendência=%{y:${dec===0 ? ",.0f" : ",."+dec+"f"}}<extra></extra>`]
-        }, [2]);
-      }
-    }catch(e){}
-  });
+  }, { displaylogo:false, responsive:true });
 
-  // painel lateral: SEMPRE mostrar
-  renderGovPanel(segments);
+  // hover com formatação BR
+  try{
+    const fmt = (dec===0) ? ",.0f" : ",."+dec+"f";
+    Plotly.restyle("grafico", { hovertemplate: [`Ano=%{x}<br>Valor=%{y:${fmt}}<extra></extra>`] }, [0]);
+    if (mean !== null) Plotly.restyle("grafico", { hovertemplate: [`Média=%{y:${fmt}}<extra></extra>`] }, [1]);
+    if (trend && trend.some(v=>v!==null)){
+      const idx = (mean!==null) ? 2 : 1;
+      Plotly.restyle("grafico", { hovertemplate: [`Tendência=%{y:${fmt}}<extra></extra>`] }, [idx]);
+    }
+  }catch(e){}
+
+  renderGovPanel(segs);
 }
 
-function renderGovPanel(segments){
+function renderGovPanel(segs){
   const painel = document.getElementById("painel-governos");
   const btnReset = document.getElementById("reset-governo");
   painel.innerHTML = "";
 
-  // lista única preservando ordem
-  const govs = [];
-  segments.forEach(s=>{
-    if (s.gov && !govs.includes(s.gov)){
-      govs.push(s.gov);
-    }
-  });
-
-  // se ainda não houver (CSV vazio), mostrar mensagem
-  if (!govs.length){
+  if (!segs.length){
     painel.innerHTML = `<div style="font-size:.8rem;color:#666;line-height:1.3;">
       Nenhum governante encontrado no CSV para este recorte.<br/>
       Verifique as colunas: Presidente_BR / Governador_RS / Prefeito_POA.
@@ -1010,16 +1002,17 @@ function renderGovPanel(segments){
     return;
   }
 
-  // mapa cor por governo (do primeiro segmento de cada gov)
-  const colorByGov = {};
-  segments.forEach(s=>{
-    if (s.gov && !colorByGov[s.gov]) colorByGov[s.gov] = s.cor || "#888";
-  });
+  // lista única em ordem
+  const govOrder = [];
+  segs.forEach(s=>{ if (!govOrder.includes(s.gov)) govOrder.push(s.gov); });
 
-  govs.forEach(g=>{
-    const segs = segments.filter(s=>s.gov===g);
-    const ini = segs[0]?.x0 ?? "";
-    const fim = segs[segs.length-1]?.x1 ?? "";
+  const colorByGov = {};
+  segs.forEach(s=>{ if (!colorByGov[s.gov]) colorByGov[s.gov] = s.cor || "#888"; });
+
+  govOrder.forEach(g=>{
+    const segList = segs.filter(s=>s.gov===g);
+    const ini = segList[0].y0;
+    const fim = segList[segList.length-1].y1;
 
     const div = document.createElement("div");
     div.className = "gov-item" + (governoAtivo === g ? " ativo" : "");
@@ -1038,7 +1031,7 @@ function renderGovPanel(segments){
 }
 
 /* =========================
-   TABELA POR GOVERNO (com base no CSV)
+   TABELA POR GOVERNO
 ========================= */
 function renderGovTable(rows){
   const tbody = document.querySelector("#tabela-estat tbody");
@@ -1049,21 +1042,17 @@ function renderGovTable(rows){
   const govCol = govColForLocalidade(selLoc);
   const dec = decimalsForCurrent(selVar);
 
-  // prepara anos em ordem
+  // agrupa por governo mantendo ordem de aparição
   const base = rows.slice().sort((a,b)=>a[COL_ANO]-b[COL_ANO]);
-
-  // grupos por governo (ordem de aparecimento)
   const govOrder = [];
   base.forEach(r=>{
     const g = normText(r[govCol]) || "";
     if (g && !govOrder.includes(g)) govOrder.push(g);
   });
 
-  // se filtrado por governoAtivo
   const govList = governoAtivo ? govOrder.filter(g=>g===governoAtivo) : govOrder;
 
   const stats = [];
-
   govList.forEach(g=>{
     const subset = base.filter(r => normText(r[govCol]) === g);
     if (!subset.length) return;
@@ -1093,7 +1082,6 @@ function renderGovTable(rows){
     });
   });
 
-  // variação vs anterior (média)
   for (let i=0;i<stats.length;i++){
     if (i===0){
       stats[i].Delta_media_vs_anterior_pct_num = NaN;
