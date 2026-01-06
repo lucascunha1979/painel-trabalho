@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Painel Interativo • Indicadores do Mercado de Trabalho (IBGE)</title>
+
+  <!-- Plotly + PapaParse + html2pdf -->
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    :root{
+      --azul-escuro:#002b5c;
+      --cinza-fundo:#f5f6fa;
+      --borda:#dcdfe6;
+      --texto:#222;
+      --muted:#666;
+      --card:#fff;
+    }
+
+    body{
+      margin:0;
+      background:var(--cinza-fundo);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      color:var(--texto);
+    }
+
+    header{
+      background:var(--azul-escuro);
+      color:#fff;
+      padding:16px 24px;
+      text-align:center;
+      font-size:1.05rem;
+      font-weight:700;
+      letter-spacing:.02em;
+    }
+
+    main{
+      max-width:1400px;
+      margin:24px auto 64px auto;
+      padding:0 16px;
+      display:flex;
+      flex-direction:column;
+      gap:18px;
+    }
+
+    .card{
+      background:var(--card);
+      border-radius:12px;
+      border:1px solid var(--borda);
+      box-shadow:0 8px 24px rgba(0,0,0,.04);
+      padding:16px 18px 18px 18px;
+    }
+
+    .titulo-bloco{
+      font-size:1rem;
+      font-weight:700;
+      color:var(--azul-escuro);
+      margin:0 0 8px 0;
+      line-height:1.3;
+      text-align:center;
+    }
+
+    .sub-bloco{
+      font-size:.82rem;
+      font-weight:400;
+      color:#555;
+      text-align:center;
+      margin-top:-2px;
+      margin-bottom:14px;
+      line-height:1.4;
+    }
+
+    /* Tabs */
+    .tabs{
+      display:flex;
+      justify-content:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom:8px;
+    }
+    .tabbtn{
+      border:1px solid var(--borda);
+      background:#fff;
+      color:#222;
+      padding:8px 12px;
+      border-radius:10px;
+      cursor:pointer;
+      font-size:.85rem;
+      font-weight:650;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      user-select:none;
+    }
+    .tabbtn.ativo{
+      background:var(--azul-escuro);
+      border-color:var(--azul-escuro);
+      color:#fff;
+    }
+
+    /* filtros */
+    #filtros{
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      justify-content:center;
+      align-items:flex-end;
+    }
+    .filtro-group{
+      display:flex;
+      flex-direction:column;
+      font-size:.8rem;
+      color:#444;
+      min-width:220px;
+    }
+    .filtro-group label{
+      font-weight:650;
+      margin-bottom:4px;
+    }
+    select, input[type="text"], input[type="file"]{
+      background:#fff;
+      border:1px solid var(--borda);
+      border-radius:10px;
+      padding:9px 10px;
+      font-size:.85rem;
+      color:#222;
+      outline:none;
+    }
+
+    .linha-acoes{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      justify-content:center;
+      align-items:center;
+      margin-top:10px;
+    }
+    .btn{
+      border:1px solid var(--borda);
+      background:#fff;
+      padding:9px 12px;
+      border-radius:10px;
+      cursor:pointer;
+      font-size:.85rem;
+      font-weight:650;
+      user-select:none;
+    }
+    .btn:hover{ background:#f0f3f9; }
+    .btn.primary{
+      background:var(--azul-escuro);
+      border-color:var(--azul-escuro);
+      color:#fff;
+    }
+    .btn.primary:hover{ filter:brightness(.95); }
+    .status{
+      font-size:.78rem;
+      color:var(--muted);
+      text-align:center;
+      margin-top:8px;
+    }
+
+    /* wrapper gráfico + painel governos */
+    #viz-wrapper{
+      display:flex;
+      flex-wrap:wrap;
+      gap:16px;
+      align-items:stretch;
+    }
+    #grafico-wrapper{
+      flex:1;
+      min-width:320px;
+    }
+    #grafico{
+      width:100%;
+      min-height:520px;
+    }
+
+    #painel-governos-wrapper{
+      width:260px;
+      min-width:260px;
+      border-left:1px solid var(--borda);
+      padding-left:14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    #painel-governos-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:8px;
+    }
+    #painel-governos-header span{
+      font-size:.82rem;
+      font-weight:800;
+      color:#333;
+    }
+    #reset-governo{
+      font-size:.72rem;
+      background:#fff;
+      border:1px solid var(--borda);
+      border-radius:8px;
+      padding:6px 8px;
+      cursor:pointer;
+      line-height:1.1;
+      display:none;
+    }
+    #reset-governo:hover{ background:#f0f0f0; }
+
+    #painel-governos{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .gov-item{
+      border-radius:10px;
+      padding:9px 10px;
+      font-size:.78rem;
+      line-height:1.25;
+      color:#fff;
+      font-weight:750;
+      cursor:pointer;
+      border:2px solid transparent;
+      user-select:none;
+    }
+    .gov-sub{
+      opacity:.95;
+      font-weight:600;
+      font-size:.72rem;
+      margin-top:2px;
+    }
+    .gov-item.ativo{
+      border-color:#000;
+      box-shadow:0 0 0 2px #000 inset;
+    }
+
+    /* tabela */
+    #tabela-wrapper{
+      overflow-x:auto;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:900px;
+      font-size:.82rem;
+    }
+    thead th{
+      background:var(--azul-escuro);
+      color:#fff;
+      font-weight:800;
+      text-align:center;
+      padding:9px 7px;
+      white-space:nowrap;
+    }
+    tbody td{
+      text-align:center;
+      padding:9px 7px;
+      border-bottom:1px solid var(--borda);
+      background:#fff;
+      color:#333;
+    }
+    tbody tr:hover td{ background:#f9fbff; }
+
+    footer{
+      text-align:center;
+      font-size:.74rem;
+      color:#666;
+      padding:26px 14px 30px 14px;
+    }
+    footer a{ color:#1f77b4; text-decoration:none; }
+    footer a:hover{ text-decoration:underline; }
+
+    @media(max-width:980px){
+      #viz-wrapper{ flex-direction:column; }
+      #painel-governos-wrapper{
+        width:100%;
+        min-width:auto;
+        border-left:none;
+        border-top:1px solid var(--borda);
+        padding-left:0;
+        padding-top:12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+<header>📊 Painel Interativo • Indicadores do Mercado de Trabalho (IBGE)</header>
+
+<main id="dashboardRoot">
+
+  <!-- CONTROLES -->
+  <section class="card">
+    <h2 class="titulo-bloco">Painel • 2012–2024 (Valores e Coeficiente de Variação)</h2>
+    <div class="sub-bloco">Filtros por localidade e variável + leitura por governo (média, tendência e variações).</div>
+
+    <div class="tabs">
+      <button class="tabbtn ativo" id="tabValores" title="Série de valores">📌 Valores</button>
+      <button class="tabbtn" id="tabCV" title="Coeficiente de variação">📎 CV</button>
+    </div>
+
+    <div id="filtros">
+
+      <div class="filtro-group">
+        <label for="selLocalidade">Localidade</label>
+        <select id="selLocalidade"></select>
+      </div>
+
+      <div class="filtro-group">
+        <label for="selVariavel">Variável</label>
+        <select id="selVariavel"></select>
+      </div>
+
+      <div class="filtro-group">
+        <label for="selAnoMin">Ano (min/max)</label>
+        <div style="display:flex; gap:10px;">
+          <select id="selAnoMin" style="flex:1;"></select>
+          <select id="selAnoMax" style="flex:1;"></select>
+        </div>
+      </div>
+
+      <div class="filtro-group">
+        <label>Carregar dados (opcional)</label>
+        <input type="file" id="fileValores" accept=".csv,text/csv" />
+        <div style="height:8px;"></div>
+        <input type="file" id="fileCV" accept=".csv,text/csv" />
+        <div style="font-size:.72rem;color:#666;margin-top:6px;">
+          Se estiver no GitHub, pode ignorar (usa /data/*.csv).
+        </div>
+      </div>
+
+    </div>
+
+    <div class="linha-acoes">
+      <button class="btn primary" id="btnAplicar">Aplicar</button>
+      <button class="btn" id="btnReset">Reset</button>
+
+      <button class="btn" id="btnDownRecorte">Baixar CSV (recorte)</button>
+      <button class="btn" id="btnDownTabela">Baixar CSV (tabela governos)</button>
+      <button class="btn" id="btnDownPNG">Baixar PNG (gráfico)</button>
+      <button class="btn" id="btnDownPDF">Exportar PDF</button>
+    </div>
+
+    <div class="status" id="statusText">Carregando dados…</div>
+  </section>
+
+  <!-- GRÁFICO + GOVERNOS -->
+  <section class="card">
+    <div id="viz-wrapper">
+      <div id="grafico-wrapper">
+        <div id="grafico"></div>
+      </div>
+
+      <aside id="painel-governos-wrapper">
+        <div id="painel-governos-header">
+          <span>Governos (clique para filtrar)</span>
+          <button id="reset-governo" title="Voltar para todos os governos">Mostrar todos</button>
+        </div>
+        <div id="painel-governos"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- TABELA -->
+  <section class="card">
+    <h2 class="titulo-bloco">📈 Estatísticas por governo</h2>
+    <div class="sub-bloco">
+      Média, mínimo, máximo, variação interna e variação em relação ao governo anterior (no recorte selecionado).
+    </div>
+
+    <div id="tabela-wrapper">
+      <table id="tabela-estat">
+        <thead>
+          <tr>
+            <th>Governo</th>
+            <th>Início</th>
+            <th>Fim</th>
+            <th>N (anos)</th>
+            <th>Média</th>
+            <th>Mínimo</th>
+            <th>Máximo</th>
+            <th>Variação interna (%)</th>
+            <th>Δ Média vs. anterior (%)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Fonte: IBGE — Síntese de Indicadores Sociais, 2025. Disponível em:
+  <a href="https://www.ibge.gov.br/estatisticas/sociais/trabalho/9221-sintese-de-indicadores-sociais.html?=&t=resultados" target="_blank" rel="noopener noreferrer">
+    página do IBGE
+  </a>.
+  <br/>
+  Painel exploratório • Cálculos e visualização: Lucas Cunha • <span id="data-atualizacao"></span>
+</footer>
+
+<script>
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const PATH_VALORES_DEFAULT = "data/painel_valores.csv";
+const PATH_CV_DEFAULT      = "data/painel_cv.csv";
+
+const COL_ANO   = "Ano";
+const COL_LOC   = "Grandes Regiões, Unidades da Federação e Municípios";
+
+// colunas de governo presentes no teu painel
+const COL_PRES  = "Presidente_BR";
+const COL_GOVRS = "Governador_RS";
+const COL_PREF  = "Prefeito_POA";
+
+// colunas numéricas (nomes como no teu Excel/CSV)
+const POP_COLS = [
+  "População em idade de trabalhar (1 000 pessoas)",
+  "População na força de trabalho (1 000 pessoas)",
+  "População ocupada (1 000 pessoas)",
+  "População ocupada em trabalhos formais (1) (1 000 pessoas)",
+  "População desocupada (1 000 pessoas)",
+  "População na força de trabalho potencial (1 000 pessoas)",
+  "População subutilizada (1 000 pessoas)"
+];
+
+const RATE_COLS = [
+  "Taxa de participação (%)",
+  "Nível de ocupação (%)",
+  "Taxa de formalização (%)",
+  "Taxa de desocupação (%)",
+  "Taxa composta de subutilização (%)"
+];
+
+// Formatação: valores (pop inteiro; taxas 1 casa). CV (2 casas)
+const DEC_TAXAS_VALORES = 1;
+const DEC_TAXAS_CV      = 2;
+const DEC_CV_OUTRAS     = 2;
+
+// Paleta para governos (auto)
+const GOV_PALETTE = [
+  "#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd",
+  "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"
+];
+
+/* =========================================================
+   ESTADO
+========================================================= */
+let DATA_VALORES = [];
+let DATA_CV = [];
+let activeTab = "valores";        // "valores" | "cv"
+let governoAtivo = null;          // string do governo clicado
+let lastGovTable = [];            // para download da tabela
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function normText(x){
+  if (x === null || x === undefined) return "";
+  return String(x).replace(/\s+/g," ").trim();
+}
+
+function parseNumber(v){
+  // já é número
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (v === null || v === undefined) return NaN;
+  let s = String(v).trim();
+  if (!s) return NaN;
+
+  // normaliza pt-BR: "1.234,56" -> "1234.56"
+  // se houver vírgula, assume decimal; remove pontos de milhar
+  if (s.includes(",")){
+    s = s.replace(/\./g,"").replace(",",".");
+  }
+  // remove espaços
+  s = s.replace(/\s/g,"");
+  const num = Number(s);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+function formatBR(num, decimals){
+  if (!Number.isFinite(num)) return "–";
+  return num.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function clampYear(y, minY, maxY){
+  return Math.max(minY, Math.min(maxY, y));
+}
+
+function uniqueSorted(arr){
+  return [...new Set(arr)].sort((a,b)=>{
+    if (typeof a === "number" && typeof b === "number") return a-b;
+    return String(a).localeCompare(String(b),"pt-BR");
+  });
+}
+
+function linearTrend(y){
+  // OLS simples: y ~ a*i + b
+  const n = y.length;
+  if (n < 2) return y.map(()=>NaN);
+  const x = y.map((_,i)=>i);
+  const meanX = x.reduce((a,b)=>a+b,0)/n;
+  const meanY = y.reduce((a,b)=>a+b,0)/n;
+  let num=0, den=0;
+  for(let i=0;i<n;i++){
+    num += (x[i]-meanX)*(y[i]-meanY);
+    den += (x[i]-meanX)*(x[i]-meanX);
+  }
+  const a = den===0 ? 0 : num/den;
+  const b = meanY - a*meanX;
+  return x.map(xi=>a*xi+b);
+}
+
+function downloadText(filename, content, mime="text/plain;charset=utf-8"){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function toCSV(rows){
+  if (!rows || !rows.length) return "";
+  const cols = Object.keys(rows[0]);
+  const esc = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+    return s;
+  };
+  const head = cols.map(esc).join(",");
+  const lines = rows.map(r => cols.map(c => esc(r[c])).join(","));
+  return [head, ...lines].join("\n");
+}
+
+/* =========================================================
+   GOVERNOS: escolher coluna e gerar intervalos
+========================================================= */
+
+function govColumnForLocalidade(localidade){
+  // regra que combinamos:
+  // Brasil e Sul -> Presidente_BR
+  // RS -> Governador_RS
+  // Porto Alegre -> Prefeito_POA
+  if (localidade === "Rio Grande do Sul") return COL_GOVRS;
+  if (localidade === "Porto Alegre") return COL_PREF;
+  return COL_PRES; // Brasil e Sul
+}
+
+function buildGovIntervals(rows, govCol){
+  // rows: já filtrados por localidade e por período (ano min/max), ordenados por ano
+  // cria intervalos por governo: minAno/maxAno e cor
+  const byGov = new Map();
+  rows.forEach(r=>{
+    const g = normText(r[govCol]);
+    const ano = Number(r[COL_ANO]);
+    if (!g || !Number.isFinite(ano)) return;
+    if (!byGov.has(g)){
+      byGov.set(g, { governo:g, inicio:ano, fim:ano });
+    } else {
+      const obj = byGov.get(g);
+      obj.inicio = Math.min(obj.inicio, ano);
+      obj.fim = Math.max(obj.fim, ano);
+    }
+  });
+
+  // ordena por início
+  const govs = [...byGov.values()].sort((a,b)=>a.inicio-b.inicio);
+
+  // cores estáveis por ordem
+  govs.forEach((g,i)=>{
+    g.cor = GOV_PALETTE[i % GOV_PALETTE.length];
+  });
+
+  return govs;
+}
+
+/* =========================================================
+   DADOS: load CSV (default ou upload)
+========================================================= */
+
+function parseCSVFromPath(path){
+  return new Promise((resolve,reject)=>{
+    Papa.parse(path, {
+      download:true,
+      header:true,
+      dynamicTyping:false,
+      skipEmptyLines:true,
+      complete: (res)=> resolve(res.data),
+      error: (err)=> reject(err)
+    });
+  });
+}
+
+function parseCSVFromFile(file){
+  return new Promise((resolve,reject)=>{
+    Papa.parse(file, {
+      header:true,
+      dynamicTyping:false,
+      skipEmptyLines:true,
+      complete: (res)=> resolve(res.data),
+      error: (err)=> reject(err)
+    });
+  });
+}
+
+function coerceRows(rawRows){
+  // garante colunas e tipos (Ano numérico; numéricos parseados quando precisar)
+  return rawRows
+    .map(r=>{
+      const obj = {};
+      Object.keys(r).forEach(k=>{
+        obj[normText(k)] = r[k];
+      });
+      // normaliza Ano
+      obj[COL_ANO] = parseNumber(obj[COL_ANO]);
+      // normaliza localidade
+      obj[COL_LOC] = normText(obj[COL_LOC]);
+      return obj;
+    })
+    .filter(r => Number.isFinite(r[COL_ANO]) && r[COL_LOC]);
+}
+
+async function loadAllData(){
+  const status = document.getElementById("statusText");
+  status.textContent = "Carregando dados (arquivos padrão)…";
+
+  try{
+    const [rawV, rawC] = await Promise.all([
+      parseCSVFromPath(PATH_VALORES_DEFAULT),
+      parseCSVFromPath(PATH_CV_DEFAULT)
+    ]);
+    DATA_VALORES = coerceRows(rawV);
+    DATA_CV      = coerceRows(rawC);
+    status.textContent = "Dados carregados (modo GitHub).";
+  }catch(e){
+    status.textContent = "Não consegui carregar /data/*.csv. Use upload local (nos campos de arquivo).";
+    DATA_VALORES = [];
+    DATA_CV = [];
+  }
+
+  initUI();
+}
+
+/* =========================================================
+   UI: popular filtros e eventos
+========================================================= */
+
+function initUI(){
+  const selLoc = document.getElementById("selLocalidade");
+  const selVar = document.getElementById("selVariavel");
+  const selMin = document.getElementById("selAnoMin");
+  const selMax = document.getElementById("selAnoMax");
+
+  // dataset base para listas (se vazio, fallback)
+  const base = (DATA_VALORES.length ? DATA_VALORES : DATA_CV);
+
+  // localidades
+  const locs = base.length
+    ? uniqueSorted(base.map(r=>r[COL_LOC]))
+    : ["Brasil","Sul","Rio Grande do Sul","Porto Alegre"];
+
+  selLoc.innerHTML = "";
+  locs.forEach(l=>{
+    const opt = document.createElement("option");
+    opt.value = l;
+    opt.textContent = l;
+    selLoc.appendChild(opt);
+  });
+
+  // variável (pop + taxas)
+  selVar.innerHTML = "";
+  const addGroup = (label, cols)=>{
+    const og = document.createElement("optgroup");
+    og.label = label;
+    cols.forEach(c=>{
+      const opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = c;
+      og.appendChild(opt);
+    });
+    selVar.appendChild(og);
+  };
+  addGroup("Populações (1 000 pessoas)", POP_COLS);
+  addGroup("Taxas (%)", RATE_COLS);
+
+  // anos
+  const anos = base.length
+    ? uniqueSorted(base.map(r=>r[COL_ANO]).filter(Number.isFinite))
+    : Array.from({length:13}, (_,i)=>2012+i);
+
+  selMin.innerHTML = "";
+  selMax.innerHTML = "";
+  anos.forEach(a=>{
+    const o1=document.createElement("option");
+    o1.value=a; o1.textContent=a;
+    const o2=document.createElement("option");
+    o2.value=a; o2.textContent=a;
+    selMin.appendChild(o1);
+    selMax.appendChild(o2);
+  });
+
+  // defaults
+  selLoc.value = locs.includes("Rio Grande do Sul") ? "Rio Grande do Sul" : locs[0];
+  selVar.value = RATE_COLS[0];
+  selMin.value = Math.min(...anos);
+  selMax.value = Math.max(...anos);
+
+  // tabs
+  document.getElementById("tabValores").addEventListener("click", ()=>{
+    activeTab = "valores";
+    governoAtivo = null;
+    document.getElementById("tabValores").classList.add("ativo");
+    document.getElementById("tabCV").classList.remove("ativo");
+    updateAll();
+  });
+  document.getElementById("tabCV").addEventListener("click", ()=>{
+    activeTab = "cv";
+    governoAtivo = null;
+    document.getElementById("tabCV").classList.add("ativo");
+    document.getElementById("tabValores").classList.remove("ativo");
+    updateAll();
+  });
+
+  // botões
+  document.getElementById("btnAplicar").addEventListener("click", ()=>{ governoAtivo=null; updateAll(); });
+  document.getElementById("btnReset").addEventListener("click", ()=>{
+    governoAtivo=null;
+    selLoc.value = "Rio Grande do Sul";
+    selVar.value = RATE_COLS[0];
+    selMin.value = 2012;
+    selMax.value = 2024;
+    updateAll();
+  });
+
+  document.getElementById("reset-governo").addEventListener("click", ()=>{
+    governoAtivo = null;
+    updateAll();
+  });
+
+  // uploads
+  document.getElementById("fileValores").addEventListener("change", async (ev)=>{
+    const f = ev.target.files?.[0];
+    if(!f) return;
+    const raw = await parseCSVFromFile(f);
+    DATA_VALORES = coerceRows(raw);
+    document.getElementById("statusText").textContent = "Valores carregados por upload.";
+    updateAll();
+  });
+
+  document.getElementById("fileCV").addEventListener("change", async (ev)=>{
+    const f = ev.target.files?.[0];
+    if(!f) return;
+    const raw = await parseCSVFromFile(f);
+    DATA_CV = coerceRows(raw);
+    document.getElementById("statusText").textContent = "CV carregado por upload.";
+    updateAll();
+  });
+
+  // downloads
+  document.getElementById("btnDownRecorte").addEventListener("click", ()=>{
+    const rec = getFilteredRows();
+    const csv = toCSV(rec);
+    downloadText(`recorte_${activeTab}_${Date.now()}.csv`, csv, "text/csv;charset=utf-8");
+  });
+
+  document.getElementById("btnDownTabela").addEventListener("click", ()=>{
+    const csv = toCSV(lastGovTable || []);
+    downloadText(`tabela_governos_${activeTab}_${Date.now()}.csv`, csv, "text/csv;charset=utf-8");
+  });
+
+  document.getElementById("btnDownPNG").addEventListener("click", async ()=>{
+    try{
+      const gd = document.getElementById("grafico");
+      const url = await Plotly.toImage(gd, {format:"png", height:700, width:1200});
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `grafico_${activeTab}_${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }catch(e){
+      alert("Não consegui gerar PNG. Tenta novamente após o gráfico carregar.");
+    }
+  });
+
+  document.getElementById("btnDownPDF").addEventListener("click", ()=>{
+    const el = document.getElementById("dashboardRoot");
+    const opt = {
+      margin:       0.35,
+      filename:     `painel_${activeTab}_${Date.now()}.pdf`,
+      image:        { type: 'jpeg', quality: 0.95 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(el).save();
+  });
+
+  updateAll();
+}
+
+/* =========================================================
+   FILTRO + RENDER
+========================================================= */
+
+function getDataset(){
+  return (activeTab === "valores") ? DATA_VALORES : DATA_CV;
+}
+
+function getFilteredRows(){
+  const ds = getDataset();
+  const selLoc = document.getElementById("selLocalidade").value;
+  let minY = parseNumber(document.getElementById("selAnoMin").value);
+  let maxY = parseNumber(document.getElementById("selAnoMax").value);
+  if (!Number.isFinite(minY)) minY = 2012;
+  if (!Number.isFinite(maxY)) maxY = 2024;
+  if (minY > maxY){ const t=minY; minY=maxY; maxY=t; }
+
+  return ds
+    .filter(r => r[COL_LOC] === selLoc)
+    .filter(r => Number.isFinite(r[COL_ANO]) && r[COL_ANO] >= minY && r[COL_ANO] <= maxY)
+    .sort((a,b)=>a[COL_ANO]-b[COL_ANO]);
+}
+
+function updateAll(){
+  const status = document.getElementById("statusText");
+
+  if (activeTab === "valores" && !DATA_VALORES.length){
+    status.textContent = "Sem dados de VALORES carregados (use /data/painel_valores.csv ou upload).";
+  } else if (activeTab === "cv" && !DATA_CV.length){
+    status.textContent = "Sem dados de CV carregados (use /data/painel_cv.csv ou upload).";
+  } else {
+    status.textContent = `OK • Aba: ${activeTab.toUpperCase()} • Clique em um governo para filtrar.`;
+  }
+
+  const rows = getFilteredRows();
+  renderChartAndGovPanel(rows);
+  renderGovTable(rows);
+}
+
+function isRateVar(varName){
+  return RATE_COLS.includes(varName);
+}
+
+function decimalsForCurrent(varName){
+  if (activeTab === "valores"){
+    return isRateVar(varName) ? DEC_TAXAS_VALORES : 0;
+  }
+  // cv
+  return isRateVar(varName) ? DEC_TAXAS_CV : DEC_CV_OUTRAS;
+}
+
+function renderChartAndGovPanel(rows){
+  const selVar = document.getElementById("selVariavel").value;
+  const selLoc = document.getElementById("selLocalidade").value;
+
+  const govCol = govColumnForLocalidade(selLoc);
+
+  // se tiver filtro por governo, restringe
+  let base = rows.slice();
+  if (governoAtivo){
+    base = base.filter(r => normText(r[govCol]) === governoAtivo);
+  }
+
+  const xYears = base.map(r=>r[COL_ANO]);
+  const yVals = base.map(r=>parseNumber(r[selVar])).map(v=>Number.isFinite(v)?v:NaN);
+
+  // remove NaNs (mantendo alinhamento)
+  const xy = xYears
+    .map((x,i)=>({x, y:yVals[i], row:base[i]}))
+    .filter(p=>Number.isFinite(p.x) && Number.isFinite(p.y))
+    .sort((a,b)=>a.x-b.x);
+
+  const xs = xy.map(p=>p.x);
+  const ys = xy.map(p=>p.y);
+
+  const dec = decimalsForCurrent(selVar);
+
+  // média e tendência
+  const mean = ys.length ? ys.reduce((a,b)=>a+b,0)/ys.length : NaN;
+  const trend = linearTrend(ys);
+
+  // intervalos dos governos (com base na série SEM o recorte por governoAtivo, para o painel)
+  const govIntervals = buildGovIntervals(rows, govCol);
+
+  // shapes (faixas de governo) — se governoAtivo, só aquele
+  const shapes = [];
+  const govsForShapes = governoAtivo ? govIntervals.filter(g=>g.governo===governoAtivo) : govIntervals;
+
+  govsForShapes.forEach(g=>{
+    // xaxis numérico; retângulo do início-0.5 ao fim+0.5
+    shapes.push({
+      type:'rect',
+      xref:'x',
+      yref:'paper',
+      x0: g.inicio - 0.5,
+      x1: g.fim + 0.5,
+      y0: 0,
+      y1: 1,
+      fillcolor: g.cor + "22",
+      line:{width:0}
+    });
+  });
+
+  // traces
+  const traces = [];
+
+  traces.push({
+    x: xs,
+    y: ys,
+    mode: "lines+markers",
+    name: "Série",
+    line: { color: "#1f77b4" }
+  });
+
+  if (ys.length){
+    traces.push({
+      x: xs,
+      y: xs.map(()=>mean),
+      mode: "lines",
+      name: "Média",
+      line: { color: "#1f77b4", dash: "dot" }
+    });
+
+    traces.push({
+      x: xs,
+      y: trend,
+      mode: "lines",
+      name: "Tendência",
+      line: { color: "#d62728", dash: "dash" }
+    });
+  }
+
+  const titulo = `${selLoc}: ${selVar}`.replace(": ", ":<br>");
+
+  Plotly.newPlot("grafico", traces, {
+    title: { text: titulo, x: 0.5, xanchor: "center" },
+    xaxis: {
+      title: "Ano",
+      tickmode: "linear",
+      dtick: 1,
+      tickangle: -45
+    },
+    yaxis: {
+      title: activeTab === "cv" ? "CV" : "Valor",
+      tickformat: dec === 0 ? ",d" : undefined
+    },
+    shapes: shapes,
+    height: 560,
+    margin: { l: 70, r: 20, t: 90, b: 110 },
+    legend: { orientation: "v" }
+  }, {
+    displaylogo:false,
+    responsive:true
+  });
+
+  // Painel governos
+  renderGovPanel(govIntervals);
+}
+
+function renderGovPanel(govIntervals){
+  const painel = document.getElementById("painel-governos");
+  const btnReset = document.getElementById("reset-governo");
+  painel.innerHTML = "";
+
+  govIntervals.forEach(g=>{
+    const div = document.createElement("div");
+    div.className = "gov-item" + (governoAtivo === g.governo ? " ativo" : "");
+    div.style.backgroundColor = g.cor;
+    div.innerHTML = `
+      <div>${g.governo}</div>
+      <div class="gov-sub">${g.inicio} → ${g.fim}</div>
+    `;
+    div.title = `${g.governo} (${g.inicio}–${g.fim})`;
+
+    div.addEventListener("click", ()=>{
+      if (governoAtivo === g.governo) governoAtivo = null;
+      else governoAtivo = g.governo;
+      updateAll();
+    });
+
+    painel.appendChild(div);
+  });
+
+  btnReset.style.display = governoAtivo ? "inline-block" : "none";
+}
+
+/* =========================================================
+   TABELA POR GOVERNO
+========================================================= */
+
+function renderGovTable(rows){
+  const tbody = document.querySelector("#tabela-estat tbody");
+  tbody.innerHTML = "";
+
+  const selVar = document.getElementById("selVariavel").value;
+  const selLoc = document.getElementById("selLocalidade").value;
+  const govCol = govColumnForLocalidade(selLoc);
+
+  const dec = decimalsForCurrent(selVar);
+
+  // intervalos (ordenados)
+  let govIntervals = buildGovIntervals(rows, govCol);
+  if (governoAtivo){
+    govIntervals = govIntervals.filter(g=>g.governo===governoAtivo);
+  }
+
+  const stats = [];
+
+  govIntervals.forEach(g=>{
+    const subset = rows
+      .filter(r => normText(r[govCol]) === g.governo)
+      .filter(r => Number.isFinite(r[COL_ANO]))
+      .sort((a,b)=>a[COL_ANO]-b[COL_ANO]);
+
+    const values = subset
+      .map(r=>parseNumber(r[selVar]))
+      .filter(Number.isFinite);
+
+    if (!values.length) return;
+
+    const mean = values.reduce((a,b)=>a+b,0)/values.length;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    let varIntra = null;
+    if (Number.isFinite(min) && min !== 0){
+      varIntra = ((max - min) / Math.abs(min)) * 100;
+    }
+
+    stats.push({
+      Governo: g.governo,
+      Inicio: g.inicio,
+      Fim: g.fim,
+      N_anos: values.length,
+      Media: mean,
+      Minimo: min,
+      Maximo: max,
+      Variacao_interna_pct: varIntra
+    });
+  });
+
+  // variação vs governo anterior (pela média)
+  for(let i=0;i<stats.length;i++){
+    if (i === 0){
+      stats[i].Delta_media_vs_anterior_pct = null;
+    }else{
+      const prev = stats[i-1].Media;
+      const cur  = stats[i].Media;
+      stats[i].Delta_media_vs_anterior_pct =
+        (Number.isFinite(prev) && prev !== 0) ? ((cur - prev) / Math.abs(prev)) * 100 : null;
+    }
+  }
+
+  // guardar para download
+  lastGovTable = stats.map(s=>({
+    Governo: s.Governo,
+    Inicio: s.Inicio,
+    Fim: s.Fim,
+    N_anos: s.N_anos,
+    Media: Number.isFinite(s.Media) ? formatBR(s.Media, dec) : "–",
+    Minimo: Number.isFinite(s.Minimo) ? formatBR(s.Minimo, dec) : "–",
+    Maximo: Number.isFinite(s.Maximo) ? formatBR(s.Maximo, dec) : "–",
+    Variacao_interna_pct: Number.isFinite(s.Variacao_interna_pct) ? formatBR(s.Variacao_interna_pct, 1) + "%" : "–",
+    Delta_media_vs_anterior_pct: Number.isFinite(s.Delta_media_vs_anterior_pct) ? formatBR(s.Delta_media_vs_anterior_pct, 1) + "%" : "–"
+  }));
+
+  // render
+  lastGovTable.forEach(row=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-weight:800;">${row.Governo}</td>
+      <td>${row.Inicio}</td>
+      <td>${row.Fim}</td>
+      <td>${row.N_anos}</td>
+      <td>${row.Media}</td>
+      <td>${row.Minimo}</td>
+      <td>${row.Maximo}</td>
+      <td>${row.Variacao_interna_pct}</td>
+      <td>${row.Delta_media_vs_anterior_pct}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* =========================================================
+   START
+========================================================= */
+
+(function setFooterDate(){
+  const hoje = new Date();
+  document.getElementById("data-atualizacao").textContent =
+    "Atualizado em: " + hoje.toLocaleDateString("pt-BR");
+})();
+
+loadAllData();
+</script>
+
+</body>
+</html>
